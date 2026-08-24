@@ -121,7 +121,7 @@ then reload the shell.
 executes or reads anything from the user-writable plugin checkout:
 
 ```sh
-sudo install -m 0755 ~/.config/omarchy/plugins/io.github.deadjoe.mbpfan/bin/mbpfan-apply /usr/local/libexec/mbpfan-apply
+sudo install -D -m 0755 ~/.config/omarchy/plugins/io.github.deadjoe.mbpfan/bin/mbpfan-apply /usr/local/libexec/mbpfan-apply
 ls -l /usr/local/libexec/mbpfan-apply   # must show root root, mode 0755
 ```
 

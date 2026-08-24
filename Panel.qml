@@ -300,7 +300,7 @@ Panel {
     onExited: function(exitCode, exitStatus) {
       if (exitCode !== 0) {
         root.applying = false
-        root.applyStatus = "error: helper missing — run: sudo install -m 0755 " + root.pluginDir + "/bin/mbpfan-apply " + root.helperPath
+        root.applyStatus = "error: helper missing — run: sudo install -D -m 0755 " + root.pluginDir + "/bin/mbpfan-apply " + root.helperPath
         Qt.callLater(function() { root.applyStatus = "" })
         return
       }
