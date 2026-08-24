@@ -62,7 +62,7 @@ BarWidget {
 
   Process {
     id: statusProc
-    command: [Quickshell.env("HOME") + "/.config/omarchy/plugins/joe.mbpfan/bin/mbpfan-status"]
+    command: [Quickshell.env("HOME") + "/.config/omarchy/plugins/deadjoe.mbpfan/bin/mbpfan-status"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {

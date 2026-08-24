@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "joe.mbpfan",
+  "id": "deadjoe.mbpfan",
   "name": "MBPFan",
   "version": "1.0.0",
-  "author": "joe",
+  "author": "deadjoe",
   "license": "MIT",
   "description": "Top-bar widget for mbpfan: CPU temperature, fan speeds, and editable fan-control defaults.",
   "kinds": ["bar-widget"],

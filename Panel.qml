@@ -240,7 +240,7 @@ Panel {
   }
   Process {
     id: statusProc
-    command: [Quickshell.env("HOME") + "/.config/omarchy/plugins/joe.mbpfan/bin/mbpfan-status"]
+    command: [Quickshell.env("HOME") + "/.config/omarchy/plugins/deadjoe.mbpfan/bin/mbpfan-status"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -273,7 +273,7 @@ Panel {
   // ---- apply (as root via pkexec); capture stderr for a friendly message ----
   Process {
     id: applyProc
-    command: ["pkexec", Quickshell.env("HOME") + "/.config/omarchy/plugins/joe.mbpfan/bin/mbpfan-apply",
+    command: ["pkexec", Quickshell.env("HOME") + "/.config/omarchy/plugins/deadjoe.mbpfan/bin/mbpfan-apply",
               lowField.text, highField.text, maxField.text, pollField.text]
     stderr: StdioCollector {
       waitForEnd: true
