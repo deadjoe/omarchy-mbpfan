@@ -54,7 +54,7 @@ Panel {
     if (applying) return
     if (!validateAll()) {
       applyStatus = "error: values must be low < high < max, poll >= 1"
-      Qt.callLater(function() { applyStatus = "" })
+      statusClearTimer.restart()
       return
     }
     applying = true
@@ -288,6 +288,14 @@ Panel {
     }
   }
 
+  // Keep the status/error text readable for a moment instead of clearing it
+  // within the same event-loop tick (otherwise "applied ✓" is never visible).
+  Timer {
+    id: statusClearTimer
+    interval: 2500
+    onTriggered: { root.applyStatus = ""; root.applyError = "" }
+  }
+
   // ---- apply: run the ROOT-OWNED helper via pkexec (single step) ----
   // The only elevated code is /usr/local/libexec/mbpfan-apply (root-owned,
   // non-user-writable). pkexec never executes anything from the user-writable
@@ -301,7 +309,7 @@ Panel {
       if (exitCode !== 0) {
         root.applying = false
         root.applyStatus = "error: helper missing — run: sudo install -D -m 0755 " + root.pluginDir + "/bin/mbpfan-apply " + root.helperPath
-        Qt.callLater(function() { root.applyStatus = "" })
+        statusClearTimer.restart()
         return
       }
       applyError = ""
@@ -328,7 +336,7 @@ Panel {
       } else {
         root.applyStatus = "error: " + (root.applyError || "apply failed")
       }
-      Qt.callLater(function() { root.applyStatus = ""; root.applyError = "" })
+      statusClearTimer.restart()
     }
   }
 }
