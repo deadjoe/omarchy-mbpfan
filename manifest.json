@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "joe.mbpfan",
+  "name": "MBPFan",
+  "version": "1.0.0",
+  "author": "joe",
+  "license": "MIT",
+  "description": "Top-bar widget for mbpfan: CPU temperature, fan speeds, and editable fan-control defaults.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "mbpfan.qml"
+  },
+  "barWidget": {
+    "displayName": "MBPFan",
+    "description": "CPU temperature, fan speeds, and mbpfan fan-control settings",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

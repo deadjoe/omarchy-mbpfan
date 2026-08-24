@@ -1,0 +1,11 @@
+#!/bin/bash
+# mbpfan-status — one-shot read of CPU temp (°C) and both fan speeds (RPM).
+# Used by the omarchy mbpfan bar widget (low-CPU: runs every few seconds).
+# Output: "TEMP FAN1 FAN2"  (e.g. "62 5049 4592")
+
+base=/sys/devices/platform/applesmc.768
+t=$(cat /sys/class/thermal/thermal_zone1/temp 2>/dev/null)
+temp=$(( t / 1000 ))
+f1=$(cat "$base/fan1_input" 2>/dev/null)
+f2=$(cat "$base/fan2_input" 2>/dev/null)
+echo "${temp:-0} ${f1:-0} ${f2:-0}"

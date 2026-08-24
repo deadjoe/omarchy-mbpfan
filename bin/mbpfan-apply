@@ -1,0 +1,37 @@
+#!/bin/bash
+# mbpfan-apply — update /etc/mbpfan.conf (as root) and reload mbpfan.
+# Invoked by the omarchy mbpfan panel via pkexec (graphical auth prompt).
+# Args: LOW_TEMP HIGH_TEMP MAX_TEMP POLLING_INTERVAL
+#   e.g. mbpfan-apply 63 66 86 1
+# Exits non-zero on bad input. Validates ranges before touching the config.
+
+conf=/etc/mbpfan.conf
+low="$1"; high="$2"; max="$3"; poll="$4"
+
+fail() { echo "$1" >&2; exit 1; }
+
+# --- validate: integers, ordered ---
+for v in "$low" "$high" "$max" "$poll"; do
+  [[ "$v" =~ ^[0-9]+$ ]] || fail "invalid number: '$v'"
+done
+[ "$low" -lt "$high" ] || fail "low_temp must be < high_temp"
+[ "$high" -lt "$max" ] || fail "high_temp must be < max_temp"
+[ "$poll" -ge 1 ] || fail "polling_interval must be >= 1"
+
+# --- ensure config exists ---
+[ -f "$conf" ] || fail "config not found: $conf"
+
+# --- update keys, preserving everything else ---
+for kv in "low_temp=$low" "high_temp=$high" "max_temp=$max" "polling_interval=$poll"; do
+  key="${kv%%=*}"; val="${kv#*=}"
+  if grep -qE "^\s*${key}\s*=" "$conf"; then
+    sed -ri "s/^(\s*${key}\s*=\s*).*/\1${val}/" "$conf"
+  else
+    # append under [general] if missing
+    sed -i "/^\[general\]/a ${key} = ${val}" "$conf"
+  fi
+done
+
+# --- restart so the new values take effect ---
+systemctl restart mbpfan || fail "failed to restart mbpfan"
+echo "applied: low=$low high=$high max=$max poll=$poll"
