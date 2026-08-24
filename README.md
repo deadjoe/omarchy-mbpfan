@@ -138,6 +138,15 @@ Run the read script manually; if it prints real numbers but the bar shows `0`, r
 
 Then check the prerequisites above (mbpfan service active, config present, sensors readable).
 
+## Updating
+
+```sh
+omarchy plugin update io.github.deadjoe.mbpfan
+```
+
+An update reloads the plugin in the running shell automatically, so no manual `omarchy restart
+shell` is needed; restart the shell only if the widget misbehaves after an update.
+
 ## Usage
 
 - **Left-click** the thermometer in the bar → opens the settings panel.
