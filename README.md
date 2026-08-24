@@ -22,18 +22,77 @@ polls while the panel is open — the monitoring widget itself does not burn CPU
 
 ## Requirements
 
-- **Omarchy** (Intel Mac build).
-- **macOS Intel / ApplesMC** hardware (`applesmc` driver present, e.g. a MacBook Pro / Air).
-- **mbpfan** installed and running as a service:
-  ```sh
-  omarchy pkg add mbpfan
-  ```
-  `/etc/mbpfan.conf` must exist (created by `mbpfan`). The widget reads and edits it.
-  `mbpfan.service` should be **enabled** so it starts at boot:
-  ```sh
-  sudo systemctl enable --now mbpfan
-  ```
-- A Nerd Font for the bar (Omarchy's default monospace) for the thermometer glyph.
+This widget is only useful if `mbpfan` is installed, configured, and actually reading your
+machine's sensors. The bar widget reads the same `applesmc` files `mbpfan` uses, so if `mbpfan`
+doesn't see a temperature or fan speed, neither will this widget.
+
+### 1. Install mbpfan
+
+```sh
+omarchy pkg add mbpfan
+```
+
+### 2. Configure mbpfan
+
+Create or edit `/etc/mbpfan.conf`. A minimal working config for a MacBook Pro looks like:
+
+```ini
+[general]
+min_fan1_speed = 2160
+max_fan1_speed = 6200
+low_temp = 63
+high_temp = 66
+max_temp = 86
+polling_interval = 1
+```
+
+- `low_temp`  — below this the fans idle at minimum speed.
+- `high_temp` — above this the fans ramp up.
+- `max_temp`  — above this the fans run at maximum speed.
+- `polling_interval` — how often (in seconds) mbpfan polls the sensors.
+- The optional `min_fan*_speed` / `max_fan*_speed` keys override the values read from the
+  `applesmc` driver. You may omit them to let mbpfan auto-detect from the driver.
+
+Adjust the thresholds to your own machine's thermal profile; the values above are typical but
+not universal.
+
+### 3. Enable and start the service
+
+```sh
+sudo systemctl enable --now mbpfan
+sudo systemctl status mbpfan    # confirm it shows active (running)
+```
+
+### 4. Confirm the sensors are readable (do this before installing the widget)
+
+Verify the hardware, driver, and config are all in place so the widget has data to show:
+
+```sh
+# The applesmc driver is loaded and exposes fan + temp sensors
+ls /sys/devices/platform/applesmc.768/fan1_input   # should exist
+
+# A live CPU temperature (divide by 1000 for degrees Celsius)
+cat /sys/class/thermal/thermal_zone1/temp          # e.g. 78000 → 78°C
+
+# Live fan speeds in RPM
+cat /sys/devices/platform/applesmc.768/fan1_input
+cat /sys/devices/platform/applesmc.768/fan2_input
+
+# mbpfan is running and actively managing the fans
+systemctl is-active mbpfan                          # should print "active"
+
+# mbpfan can parse your config (look for a successful start in the log)
+sudo systemctl status mbpfan --no-pager | tail -5
+```
+
+If any of the above returns nothing or an error, fix that first — the widget will show the same
+result as these commands.
+
+### 5. A Nerd Font for the bar
+
+The widget's bar icon is a Nerd Font glyph (the thermometer). Omarchy's default monospace font is
+already a Nerd Font, so this is usually already satisfied. If the icon appears as a hollow box
+(tofu) rather than a thermometer, your bar font is not a Nerd Font and the glyph is missing.
 
 ## Install
 
@@ -53,6 +112,17 @@ The plugin lands in `~/.config/omarchy/plugins/deadjoe.mbpfan/` and the widget i
 **right** section of the top bar (per `barWidget.defaultSection`). If it doesn't appear, open
 `~/.config/omarchy/shell.json` and ensure the `right` layout contains `{ "id": "deadjoe.mbpfan" }`,
 then reload the shell.
+
+### If the widget shows 0°C / 0 RPM after install
+
+Run the read script manually; if it prints real numbers but the bar shows `0`, re-read the
+`applesmc` path (some machines expose a different fan numbering):
+
+```sh
+~/.config/omarchy/plugins/deadjoe.mbpfan/bin/mbpfan-status
+```
+
+Then check the prerequisites above (mbpfan service active, config present, sensors readable).
 
 ## Usage
 
