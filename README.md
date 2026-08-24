@@ -105,12 +105,12 @@ omarchy plugin add <this-repo-url> --enable
 Or install from a local checkout:
 
 ```sh
-omarchy plugin add ~/github/omarchy-mbpfan --enable
+omarchy plugin add ~/github/deadjoe/omarchy-mbpfan --enable
 ```
 
-The plugin lands in `~/.config/omarchy/plugins/deadjoe.mbpfan/` and the widget is placed in the
+The plugin lands in `~/.config/omarchy/plugins/io.github.deadjoe.mbpfan/` and the widget is placed in the
 **right** section of the top bar (per `barWidget.defaultSection`). If it doesn't appear, open
-`~/.config/omarchy/shell.json` and ensure the `right` layout contains `{ "id": "deadjoe.mbpfan" }`,
+`~/.config/omarchy/shell.json` and ensure the `right` layout contains `{ "id": "io.github.deadjoe.mbpfan" }`,
 then reload the shell.
 
 ### If the widget shows 0°C / 0 RPM after install
@@ -119,7 +119,7 @@ Run the read script manually; if it prints real numbers but the bar shows `0`, r
 `applesmc` path (some machines expose a different fan numbering):
 
 ```sh
-~/.config/omarchy/plugins/deadjoe.mbpfan/bin/mbpfan-status
+~/.config/omarchy/plugins/io.github.deadjoe.mbpfan/bin/mbpfan-status
 ```
 
 Then check the prerequisites above (mbpfan service active, config present, sensors readable).
@@ -149,8 +149,8 @@ Invalid input is rejected without touching the config.
 ## Uninstall / disable
 
 ```sh
-omarchy plugin disable deadjoe.mbpfan
-omarchy plugin remove deadjoe.mbpfan
+omarchy plugin disable io.github.deadjoe.mbpfan
+omarchy plugin remove io.github.deadjoe.mbpfan
 ```
 
 Removing also resets the bar layout that referenced the widget.
@@ -159,7 +159,7 @@ Removing also resets the bar layout that referenced the widget.
 
 - The widget runs **unsandboxed** inside the long-lived `omarchy-shell` process (like all Omarchy
   plugins). It only reads system sensor files and edits `/etc/mbpfan.conf` when you press Apply.
-- First-party `omarchy.*` id namespace is reserved; this plugin uses `deadjoe.mbpfan`. Change the
+- First-party `omarchy.*` id namespace is reserved; this plugin uses `io.github.deadjoe.mbpfan`. Change the
   `id` (and the script paths in `mbpfan.qml`/`Panel.qml`) if you fork it under your own
   namespace.
 
