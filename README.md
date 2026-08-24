@@ -1,7 +1,7 @@
 # MBPFan — Omarchy top-bar widget for mbpfan
 
 A [Quickshell](https://quickshell.io) bar-widget for [Omarchy](https://omarchy.org) that watches
-[`mbpfan`](https://github.com/linux-on-mac/mbpfan) on Intel MacBooks: it shows **CPU temperature**
+[`mbpfan`](https://github.com/linux-on-mac/mbpfan) on Apple hardware: it shows **CPU temperature**
 and **fan speed** right in the top bar, and opens a small panel where you can view and edit
 mbpfan's fan-control defaults (`low_temp`, `high_temp`, `max_temp`, `polling_interval`).
 
@@ -22,6 +22,11 @@ polls while the panel is open — the monitoring widget itself does not burn CPU
 
 ## Requirements
 
+This widget targets **Apple hardware that `mbpfan` supports and that exposes the `applesmc`
+**sensor driver** — that is, any Apple machine with fans and the ApplesMC controller, such as
+MacBook, MacBook Pro, MacBook Air, iMac, or Mac mini running Linux. If your machine can run
+`mbpfan`, it can use this widget.
+
 This widget is only useful if `mbpfan` is installed, configured, and actually reading your
 machine's sensors. The bar widget reads the same `applesmc` files `mbpfan` uses, so if `mbpfan`
 doesn't see a temperature or fan speed, neither will this widget.
@@ -34,7 +39,7 @@ omarchy pkg add mbpfan
 
 ### 2. Configure mbpfan
 
-Create or edit `/etc/mbpfan.conf`. A minimal working config for a MacBook Pro looks like:
+Create or edit `/etc/mbpfan.conf`. A minimal working config looks like:
 
 ```ini
 [general]
@@ -100,12 +105,6 @@ Use the official Omarchy plugin command (from a git URL of this repo):
 
 ```sh
 omarchy plugin add <this-repo-url> --enable
-```
-
-Or install from a local checkout:
-
-```sh
-omarchy plugin add ~/github/deadjoe/omarchy-mbpfan --enable
 ```
 
 The plugin lands in `~/.config/omarchy/plugins/io.github.deadjoe.mbpfan/` and the widget is placed in the
