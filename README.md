@@ -15,9 +15,9 @@ polls while the panel is open — the monitoring widget itself does not burn CPU
 - Click to open a compact settings panel:
   - Current temperature + fan RPM.
   - Editable mbpfan defaults: `low_temp`, `high_temp`, `max_temp`, `polling_interval`.
-  - **Apply** renders the new thresholds in the user session, then writes `/etc/mbpfan.conf` and
-    restarts `mbpfan` using `pkexec` on **trusted system binaries only** (the plugin's own scripts
-    are never run as root).
+  - **Apply** validates the values, then runs a **root-owned helper** (`/usr/local/libexec/mbpfan-apply`)
+    via `pkexec`; the helper writes `/etc/mbpfan.conf` and restarts `mbpfan`. The privileged side never
+    executes or reads anything from the plugin checkout.
   - **Reset** re-reads the live config back into the fields.
   - Fields validate on focus loss — non-numeric input reverts to the configured value.
 - Follows the Omarchy bar-widget contract; opens anchored next to its own bar slot (right side).
@@ -114,6 +114,19 @@ The plugin lands in `~/.config/omarchy/plugins/io.github.deadjoe.mbpfan/` and th
 `~/.config/omarchy/shell.json` and ensure the `right` layout contains `{ "id": "io.github.deadjoe.mbpfan" }`,
 then reload the shell.
 
+### Install the privileged helper (one-time)
+
+**Apply** runs a small helper as root through `pkexec`. For that to work, install the helper once to a
+**root-owned, non-user-writable** path. The panel always invokes this fixed path, so `pkexec` never
+executes or reads anything from the user-writable plugin checkout:
+
+```sh
+sudo install -m 0755 ~/.config/omarchy/plugins/io.github.deadjoe.mbpfan/bin/mbpfan-apply /usr/local/libexec/mbpfan-apply
+ls -l /usr/local/libexec/mbpfan-apply   # must show root root, mode 0755
+```
+
+If the helper is missing, the panel's **Apply** button shows an error with this install command.
+
 ### If the widget shows 0°C / 0 RPM after install
 
 Run the read script manually; if it prints real numbers but the bar shows `0`, re-read the
@@ -129,9 +142,9 @@ Then check the prerequisites above (mbpfan service active, config present, senso
 
 - **Left-click** the thermometer in the bar → opens the settings panel.
 - **Right-click** → force a refresh.
-- In the panel, edit the values and press **Apply** (a graphical `pkexec` prompt appears to write
-  `/etc/mbpfan.conf`, then another to restart `mbpfan`; only trusted system binaries are elevated).
-  **Reset** discards un-applied edits.
+- In the panel, edit the values and press **Apply** (a graphical `pkexec` prompt appears; the
+  **root-owned helper** `/usr/local/libexec/mbpfan-apply` writes `/etc/mbpfan.conf` and restarts
+  `mbpfan`). **Reset** discards un-applied edits.
 
 ## How the values are read
 
@@ -144,17 +157,18 @@ It prints a single line `TEMP FAN1 FAN2` every refresh. Nothing is written by th
 
 ## How the settings are applied
 
-Applying is split so **privileged code is never taken from the plugin checkout**:
+Applying uses a **root-owned helper at a fixed, non-user-writable path**:
 
-1. The panel validates the four values (non-negative integers, `low < high < max`, `poll >= 1`).
-2. `bin/mbpfan-apply LOW HIGH MAX POLL TMPFILE` runs **unprivileged** in the user session: it reads the
-   current `/etc/mbpfan.conf`, replaces the four keys (preserving comments and every other key), and
-   writes the result to an owner-only temp file. This helper is never elevated.
-3. The panel elevates **only fixed trusted system binaries**: `pkexec install` copies the rendered file
-   to `/etc/mbpfan.conf`, then `pkexec systemctl restart mbpfan` reloads the service.
+1. The panel validates the four values (digits only, `low < high < max`, `poll >= 1`).
+2. The panel launches `pkexec /usr/local/libexec/mbpfan-apply LOW HIGH MAX POLL` — a helper installed
+   once to a root-owned location (see [Install](#install)); the user session cannot modify it.
+3. The helper re-validates the four integer arguments, edits the root-owned `/etc/mbpfan.conf`, and
+   restarts the `mbpfan` service.
 
-All root execution stays on first-party, root-owned binaries (`install`, `systemctl`) with strictly
-validated values; the plugin's own user-writable scripts are never run as root.
+The privileged side therefore only ever executes the root-owned helper and only ever reads/writes the
+root-owned `/etc/mbpfan.conf`; no user-writable code, file, or pathname is on the root path, and the
+panel never passes a user-controlled path to `pkexec`. This removes the replace-the-file / symlink
+TOCTOU surface entirely. (One `pkexec` prompt covers both the config write and the service restart.)
 
 ## Uninstall / disable
 
@@ -168,8 +182,9 @@ Removing also resets the bar layout that referenced the widget.
 ## Notes
 
 - The widget runs **unsandboxed** inside the long-lived `omarchy-shell` process (like all Omarchy
-  plugins). It only reads system sensor files, and only elevates fixed trusted binaries (`install`,
-  `systemctl`) to write `/etc/mbpfan.conf` and restart `mbpfan` when you press Apply.
+  plugins). It only reads system sensor files, and only elevates the root-owned helper
+  `/usr/local/libexec/mbpfan-apply` when you press Apply. If you install it yourself, verify its
+  ownership: `ls -l /usr/local/libexec/mbpfan-apply` must show `root root` with mode `0755`.
 - First-party `omarchy.*` id namespace is reserved; this plugin uses `io.github.deadjoe.mbpfan`. Change the
   `id` (and the script paths in `mbpfan.qml`/`Panel.qml`) if you fork it under your own
   namespace.

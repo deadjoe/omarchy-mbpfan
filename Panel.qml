@@ -32,8 +32,7 @@ Panel {
   property string applyStatus: ""
   property string applyError: ""
   readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.deadjoe.mbpfan"
-  readonly property string renderer: pluginDir + "/bin/mbpfan-apply"
-  readonly property string tmpFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/omarchy-mbpfan/mbpfan.conf.tmp"
+  readonly property string helperPath: "/usr/local/libexec/mbpfan-apply"
 
   function refreshStatus() {
     if (!statusProc.running) statusProc.running = true
@@ -61,9 +60,7 @@ Panel {
     applying = true
     applyStatus = ""
     applyError = ""
-    renderProc.command = [renderer, lowField.text.trim(), highField.text.trim(),
-                          maxField.text.trim(), pollField.text.trim(), tmpFile]
-    if (!renderProc.running) renderProc.running = true
+    if (!checkProc.running) checkProc.running = true
   }
 
   function open() {
@@ -291,53 +288,33 @@ Panel {
     }
   }
 
-  // ---- apply: render (user-space) -> write config (pkexec) -> restart (pkexec) ----
-  // Only fixed trusted system binaries are ever elevated. The plugin's own,
-  // user-writable scripts run unprivileged; pkexec never executes plugin code.
+  // ---- apply: run the ROOT-OWNED helper via pkexec (single step) ----
+  // The only elevated code is /usr/local/libexec/mbpfan-apply (root-owned,
+  // non-user-writable). pkexec never executes anything from the user-writable
+  // plugin checkout and never reads a user-controlled pathname: the helper gets
+  // the four strictly validated integers as arguments and reads/writes only the
+  // root-owned /etc/mbpfan.conf. No file TOCTOU / symlink surface remains.
   Process {
-    id: renderProc
+    id: checkProc
+    command: ["/usr/bin/test", "-x", root.helperPath]
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode !== 0) {
+        root.applying = false
+        root.applyStatus = "error: helper missing — run: sudo install -m 0755 " + root.pluginDir + "/bin/mbpfan-apply " + root.helperPath
+        Qt.callLater(function() { root.applyStatus = "" })
+        return
+      }
+      applyError = ""
+      applyProc.command = ["/usr/bin/pkexec", helperPath,
+                           lowField.text.trim(), highField.text.trim(),
+                           maxField.text.trim(), pollField.text.trim()]
+      if (!applyProc.running) applyProc.running = true
+    }
+  }
+
+  Process {
+    id: applyProc
     command: []
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: function() { root.applyError = String(text).trim() }
-    }
-    onExited: function(exitCode, exitStatus) {
-      if (exitCode !== 0) {
-        root.applying = false
-        root.applyStatus = "error: " + (root.applyError || "render failed")
-        Qt.callLater(function() { root.applyStatus = ""; root.applyError = "" })
-        return
-      }
-      root.applyError = ""
-      if (!installProc.running) installProc.running = true
-    }
-  }
-
-  // Write the rendered config as root via the trusted coreutils `install`.
-  Process {
-    id: installProc
-    command: ["/usr/bin/pkexec", "/usr/bin/install", "-o", "root", "-g", "root",
-              "-m", "0644", root.tmpFile, "/etc/mbpfan.conf"]
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: function() { root.applyError = String(text).trim() }
-    }
-    onExited: function(exitCode, exitStatus) {
-      if (exitCode !== 0) {
-        root.applying = false
-        root.applyStatus = "error: " + (root.applyError || "write config failed")
-        Qt.callLater(function() { root.applyStatus = ""; root.applyError = "" })
-        return
-      }
-      root.applyError = ""
-      if (!restartProc.running) restartProc.running = true
-    }
-  }
-
-  // Reload mbpfan as root via the trusted systemctl binary.
-  Process {
-    id: restartProc
-    command: ["/usr/bin/pkexec", "/usr/bin/systemctl", "restart", "mbpfan"]
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: function() { root.applyError = String(text).trim() }
@@ -349,7 +326,7 @@ Panel {
         root.loadConfig()
         root.refreshStatus()
       } else {
-        root.applyStatus = "error: " + (root.applyError || "restart failed")
+        root.applyStatus = "error: " + (root.applyError || "apply failed")
       }
       Qt.callLater(function() { root.applyStatus = ""; root.applyError = "" })
     }

@@ -1,50 +1,53 @@
 #!/bin/bash
-# mbpfan-apply — render a candidate /etc/mbpfan.conf in the user session.
+# mbpfan-apply — apply mbpfan fan-control thresholds as root (via pkexec).
 #
-# UNPRIVILEGED helper. Given LOW HIGH MAX POLL and an output path, it reads the
-# current /etc/mbpfan.conf, replaces the four fan-control keys (low_temp,
-# high_temp, max_temp, polling_interval), and writes the result to TMPFILE. It
-# NEVER runs as root and never restarts mbpfan. The omarchy panel elevates only
-# fixed, trusted system binaries afterwards:
-#   pkexec install        -> write the rendered file to /etc/mbpfan.conf
-#   pkexec systemctl      -> restart mbpfan so the new thresholds apply
-# This keeps all privileged code on system binaries (with strictly validated
-# values) instead of elevating user-writable plugin scripts.
+# This helper is installed ONCE to a root-owned, non-user-writable path
+# (default: /usr/local/libexec/mbpfan-apply) and is invoked by the omarchy
+# mbpfan panel via pkexec at that fixed path. pkexec never executes anything
+# from the user-writable plugin checkout.
 #
-# Args: LOW HIGH MAX POLL TMPFILE
-#   e.g. mbpfan-apply 63 66 86 1 /run/user/1000/omarchy-mbpfan/mbpfan.conf.tmp
-# Exits non-zero on bad input. Validates ranges before touching anything.
+# Security posture: the ONLY inputs are the four arguments below, which are
+# strictly validated as digit-only integers with ordered ranges. The helper
+# reads and writes only the root-owned /etc/mbpfan.conf and restarts the
+# root-owned mbpfan service. No user-controlled file path, file content, or
+# code is ever on the privileged side, so there is no replace-the-file or
+# symlink TOCTOU surface.
+#
+# Args: LOW HIGH MAX POLL
+#   e.g. mbpfan-apply 63 66 86 1
+# Exits non-zero on bad input; validates before touching the config.
 
 conf=/etc/mbpfan.conf
-low="$1"; high="$2"; max="$3"; poll="$4"; out="$5"
+low="$1"; high="$2"; max="$3"; poll="$4"
 
 fail() { echo "$1" >&2; exit 1; }
 
-# --- validate: non-negative integers, ordered ---
+# --- must actually be root (pkexec guarantees this; double-check anyway) ---
+[ "$(id -u)" -eq 0 ] || fail "must be run as root (via pkexec)"
+
+# --- validate: digits only (no shell metacharacters can reach this script) ---
 for v in "$low" "$high" "$max" "$poll"; do
   [[ "$v" =~ ^[0-9]+$ ]] || fail "invalid number: '$v'"
 done
+
+# --- validate: ordered ranges (same rules mbpfan itself enforces) ---
 [ "$low" -lt "$high" ] || fail "low_temp must be < high_temp"
 [ "$high" -lt "$max" ] || fail "high_temp must be < max_temp"
 [ "$poll" -ge 1 ] || fail "polling_interval must be >= 1"
 
-# --- inputs ---
+# --- config must exist (root-owned; not subject to user tampering) ---
 [ -f "$conf" ] || fail "config not found: $conf"
-[ -n "$out" ] || fail "no output path"
 
-# --- write to an owner-only temp file, preserving everything else ---
-umask 077
-mkdir -p "$(dirname "$out")" || fail "cannot create output dir: $(dirname "$out")"
-cp "$conf" "$out" || fail "cannot copy config to: $out"
-
-# --- replace the four keys (same logic as the old in-place apply) ---
+# --- update keys, preserving everything else ---
 for kv in "low_temp=$low" "high_temp=$high" "max_temp=$max" "polling_interval=$poll"; do
   key="${kv%%=*}"; val="${kv#*=}"
-  if grep -qE "^\s*${key}\s*=" "$out"; then
-    sed -ri "s/^(\s*${key}\s*=\s*).*/\1${val}/" "$out"
+  if grep -qE "^\s*${key}\s*=" "$conf"; then
+    sed -ri "s/^(\s*${key}\s*=\s*).*/\1${val}/" "$conf"
   else
-    sed -i "/^\[general\]/a ${key} = ${val}" "$out"
+    sed -i "/^\[general\]/a ${key} = ${val}" "$conf"
   fi
 done
 
-echo "rendered $out"
+# --- apply: reload the service so the new thresholds take effect ---
+/usr/bin/systemctl restart mbpfan || fail "failed to restart mbpfan"
+echo "applied: low=$low high=$high max=$max poll=$poll"
