@@ -15,7 +15,9 @@ polls while the panel is open — the monitoring widget itself does not burn CPU
 - Click to open a compact settings panel:
   - Current temperature + fan RPM.
   - Editable mbpfan defaults: `low_temp`, `high_temp`, `max_temp`, `polling_interval`.
-  - **Apply** writes `/etc/mbpfan.conf` (via `pkexec`) and restarts `mbpfan`.
+  - **Apply** renders the new thresholds in the user session, then writes `/etc/mbpfan.conf` and
+    restarts `mbpfan` using `pkexec` on **trusted system binaries only** (the plugin's own scripts
+    are never run as root).
   - **Reset** re-reads the live config back into the fields.
   - Fields validate on focus loss — non-numeric input reverts to the configured value.
 - Follows the Omarchy bar-widget contract; opens anchored next to its own bar slot (right side).
@@ -127,8 +129,9 @@ Then check the prerequisites above (mbpfan service active, config present, senso
 
 - **Left-click** the thermometer in the bar → opens the settings panel.
 - **Right-click** → force a refresh.
-- In the panel, edit the values and press **Apply** (a graphical `pkexec` password prompt appears;
-  `/etc/mbpfan.conf` is written and `mbpfan` is restarted). **Reset** discards un-applied edits.
+- In the panel, edit the values and press **Apply** (a graphical `pkexec` prompt appears to write
+  `/etc/mbpfan.conf`, then another to restart `mbpfan`; only trusted system binaries are elevated).
+  **Reset** discards un-applied edits.
 
 ## How the values are read
 
@@ -141,9 +144,17 @@ It prints a single line `TEMP FAN1 FAN2` every refresh. Nothing is written by th
 
 ## How the settings are applied
 
-`bin/mbpfan-apply LOW HIGH MAX POLL` edits `/etc/mbpfan.conf` (as root, via `pkexec`),
-validating that all values are integers and `low < high < max`, then restarts `mbpfan`.
-Invalid input is rejected without touching the config.
+Applying is split so **privileged code is never taken from the plugin checkout**:
+
+1. The panel validates the four values (non-negative integers, `low < high < max`, `poll >= 1`).
+2. `bin/mbpfan-apply LOW HIGH MAX POLL TMPFILE` runs **unprivileged** in the user session: it reads the
+   current `/etc/mbpfan.conf`, replaces the four keys (preserving comments and every other key), and
+   writes the result to an owner-only temp file. This helper is never elevated.
+3. The panel elevates **only fixed trusted system binaries**: `pkexec install` copies the rendered file
+   to `/etc/mbpfan.conf`, then `pkexec systemctl restart mbpfan` reloads the service.
+
+All root execution stays on first-party, root-owned binaries (`install`, `systemctl`) with strictly
+validated values; the plugin's own user-writable scripts are never run as root.
 
 ## Uninstall / disable
 
@@ -157,7 +168,8 @@ Removing also resets the bar layout that referenced the widget.
 ## Notes
 
 - The widget runs **unsandboxed** inside the long-lived `omarchy-shell` process (like all Omarchy
-  plugins). It only reads system sensor files and edits `/etc/mbpfan.conf` when you press Apply.
+  plugins). It only reads system sensor files, and only elevates fixed trusted binaries (`install`,
+  `systemctl`) to write `/etc/mbpfan.conf` and restart `mbpfan` when you press Apply.
 - First-party `omarchy.*` id namespace is reserved; this plugin uses `io.github.deadjoe.mbpfan`. Change the
   `id` (and the script paths in `mbpfan.qml`/`Panel.qml`) if you fork it under your own
   namespace.

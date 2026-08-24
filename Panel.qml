@@ -31,6 +31,9 @@ Panel {
   property bool applying: false
   property string applyStatus: ""
   property string applyError: ""
+  readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.deadjoe.mbpfan"
+  readonly property string renderer: pluginDir + "/bin/mbpfan-apply"
+  readonly property string tmpFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/omarchy-mbpfan/mbpfan.conf.tmp"
 
   function refreshStatus() {
     if (!statusProc.running) statusProc.running = true
@@ -38,11 +41,29 @@ Panel {
   function loadConfig() {
     if (!cfgProc.running) cfgProc.running = true
   }
+  // Strict numeric/ordering check of the four fields before any elevation.
+  function validateAll() {
+    var low = lowField.text.trim(), high = highField.text.trim()
+    var max = maxField.text.trim(), poll = pollField.text.trim()
+    if (!/^\d+$/.test(low) || !/^\d+$/.test(high) || !/^\d+$/.test(max) || !/^\d+$/.test(poll)) return false
+    var l = parseInt(low, 10), h = parseInt(high, 10)
+    var m = parseInt(max, 10), p = parseInt(poll, 10)
+    return l < h && h < m && p >= 1
+  }
+
   function applyConfig() {
     if (applying) return
+    if (!validateAll()) {
+      applyStatus = "error: values must be low < high < max, poll >= 1"
+      Qt.callLater(function() { applyStatus = "" })
+      return
+    }
     applying = true
     applyStatus = ""
-    if (!applyProc.running) applyProc.running = true
+    applyError = ""
+    renderProc.command = [renderer, lowField.text.trim(), highField.text.trim(),
+                          maxField.text.trim(), pollField.text.trim(), tmpFile]
+    if (!renderProc.running) renderProc.running = true
   }
 
   function open() {
@@ -270,11 +291,53 @@ Panel {
     }
   }
 
-  // ---- apply (as root via pkexec); capture stderr for a friendly message ----
+  // ---- apply: render (user-space) -> write config (pkexec) -> restart (pkexec) ----
+  // Only fixed trusted system binaries are ever elevated. The plugin's own,
+  // user-writable scripts run unprivileged; pkexec never executes plugin code.
   Process {
-    id: applyProc
-    command: ["pkexec", Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.deadjoe.mbpfan/bin/mbpfan-apply",
-              lowField.text, highField.text, maxField.text, pollField.text]
+    id: renderProc
+    command: []
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: function() { root.applyError = String(text).trim() }
+    }
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode !== 0) {
+        root.applying = false
+        root.applyStatus = "error: " + (root.applyError || "render failed")
+        Qt.callLater(function() { root.applyStatus = ""; root.applyError = "" })
+        return
+      }
+      root.applyError = ""
+      if (!installProc.running) installProc.running = true
+    }
+  }
+
+  // Write the rendered config as root via the trusted coreutils `install`.
+  Process {
+    id: installProc
+    command: ["/usr/bin/pkexec", "/usr/bin/install", "-o", "root", "-g", "root",
+              "-m", "0644", root.tmpFile, "/etc/mbpfan.conf"]
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: function() { root.applyError = String(text).trim() }
+    }
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode !== 0) {
+        root.applying = false
+        root.applyStatus = "error: " + (root.applyError || "write config failed")
+        Qt.callLater(function() { root.applyStatus = ""; root.applyError = "" })
+        return
+      }
+      root.applyError = ""
+      if (!restartProc.running) restartProc.running = true
+    }
+  }
+
+  // Reload mbpfan as root via the trusted systemctl binary.
+  Process {
+    id: restartProc
+    command: ["/usr/bin/pkexec", "/usr/bin/systemctl", "restart", "mbpfan"]
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: function() { root.applyError = String(text).trim() }
@@ -286,7 +349,7 @@ Panel {
         root.loadConfig()
         root.refreshStatus()
       } else {
-        root.applyStatus = "error: " + (root.applyError || "apply failed")
+        root.applyStatus = "error: " + (root.applyError || "restart failed")
       }
       Qt.callLater(function() { root.applyStatus = ""; root.applyError = "" })
     }
