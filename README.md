@@ -61,7 +61,10 @@ polling_interval = 1
   `applesmc` driver. You may omit them to let mbpfan auto-detect from the driver.
 
 Adjust the thresholds to your own machine's thermal profile; the values above are typical but
-not universal.
+not universal. The widget's **Apply** accepts only `low_temp ≥ 20` with `low < high < max`,
+`max_temp ≤ 90`, and `polling_interval` 1–60 — aligned with upstream mbpfan's guidance
+(`max_temp` must not exceed 90, otherwise the daemon can stay at minimum fan speed at normal
+temperatures). Values outside those ranges are rejected without touching the config.
 
 ### 3. Enable and start the service
 
@@ -156,7 +159,8 @@ It prints a single line `TEMP FAN1 FAN2` every refresh. Nothing is written by th
 Applying needs no helper and installs nothing: both privileged steps use only fixed trusted
 system binaries, and the only user-controlled input is the four digits-only values.
 
-1. The panel validates the four values (digits only, non-negative, `low < high < max`, `poll >= 1`).
+1. The panel validates the four values strictly (digits only, `20 ≤ low < high < max ≤ 90`,
+   `poll` 1–60), matching upstream mbpfan's guidance that `max_temp` must not exceed 90.
 2. The panel invokes `pkexec /usr/bin/sed -i … /etc/mbpfan.conf`, where each expression is built from a
    fixed key name (`low_temp`, `high_temp`, `max_temp`, `polling_interval`) and the validated digit
    value — no user-controlled path, file, or code is in the expressions.

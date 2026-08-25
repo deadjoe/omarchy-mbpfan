@@ -38,14 +38,18 @@ Panel {
   function loadConfig() {
     if (!cfgProc.running) cfgProc.running = true
   }
-  // Strict numeric/ordering check of the four fields before any elevation.
+  // Strict validation of the four fields before any elevation: digits only,
+  // ordered (low < high < max), and within sane bounds aligned with upstream
+  // mbpfan guidance (max_temp must not exceed 90; poll must not be extreme).
   function validateAll() {
     var low = lowField.text.trim(), high = highField.text.trim()
     var max = maxField.text.trim(), poll = pollField.text.trim()
     if (!/^\d+$/.test(low) || !/^\d+$/.test(high) || !/^\d+$/.test(max) || !/^\d+$/.test(poll)) return false
     var l = parseInt(low, 10), h = parseInt(high, 10)
     var m = parseInt(max, 10), p = parseInt(poll, 10)
-    return l < h && h < m && p >= 1
+    if (!(l < h && h < m)) return false
+    if (l < 20 || m > 90 || p < 1 || p > 60) return false
+    return true
   }
 
   // Build a sed expression that rewrites one threshold key in /etc/mbpfan.conf.
@@ -58,7 +62,7 @@ Panel {
   function applyConfig() {
     if (applying) return
     if (!validateAll()) {
-      applyStatus = "error: values must be low < high < max, poll >= 1"
+      applyStatus = "error: values must be 20 ≤ low < high < max ≤ 90, poll 1–60"
       statusClearTimer.restart()
       return
     }
