@@ -31,8 +31,6 @@ Panel {
   property bool applying: false
   property string applyStatus: ""
   property string applyError: ""
-  readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.deadjoe.mbpfan"
-  readonly property string helperPath: "/usr/local/libexec/mbpfan-apply"
 
   function refreshStatus() {
     if (!statusProc.running) statusProc.running = true
@@ -50,6 +48,13 @@ Panel {
     return l < h && h < m && p >= 1
   }
 
+  // Build a sed expression that rewrites one threshold key in /etc/mbpfan.conf.
+  // KEY is a fixed key name; VAL has already been validated as digits-only, so
+  // the expression cannot carry shell/sed metacharacters from user input.
+  function sedExpr(key, val) {
+    return "s/^\\([[:space:]]*" + key + "[[:space:]]*=[[:space:]]*\\)" + ".*" + "/\\1" + val + "/"
+  }
+
   function applyConfig() {
     if (applying) return
     if (!validateAll()) {
@@ -60,7 +65,13 @@ Panel {
     applying = true
     applyStatus = ""
     applyError = ""
-    if (!checkProc.running) checkProc.running = true
+    applyProc.command = ["/usr/bin/pkexec", "/usr/bin/sed", "-i",
+                         "-e", sedExpr("low_temp", lowField.text.trim()),
+                         "-e", sedExpr("high_temp", highField.text.trim()),
+                         "-e", sedExpr("max_temp", maxField.text.trim()),
+                         "-e", sedExpr("polling_interval", pollField.text.trim()),
+                         "/etc/mbpfan.conf"]
+    if (!applyProc.running) applyProc.running = true
   }
 
   function open() {
@@ -296,32 +307,35 @@ Panel {
     onTriggered: { root.applyStatus = ""; root.applyError = "" }
   }
 
-  // ---- apply: run the ROOT-OWNED helper via pkexec (single step) ----
-  // The only elevated code is /usr/local/libexec/mbpfan-apply (root-owned,
-  // non-user-writable). pkexec never executes anything from the user-writable
-  // plugin checkout and never reads a user-controlled pathname: the helper gets
-  // the four strictly validated integers as arguments and reads/writes only the
-  // root-owned /etc/mbpfan.conf. No file TOCTOU / symlink surface remains.
+  // ---- apply: two privileged steps, both on fixed trusted system binaries ----
+  // Step 1 (applyProc): /usr/bin/sed rewrites the four threshold keys in the
+  // root-owned /etc/mbpfan.conf. Its expressions are built purely from fixed
+  // key names and the digits-only values validated above, so no path, file,
+  // content, or code originates from the user-writable plugin checkout — and
+  // nothing has to be installed as root anywhere.
+  // Step 2 (restartProc): /usr/bin/systemctl restarts the mbpfan service.
   Process {
-    id: checkProc
-    command: ["/usr/bin/test", "-x", root.helperPath]
+    id: applyProc
+    command: []
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: function() { root.applyError = String(text).trim() }
+    }
     onExited: function(exitCode, exitStatus) {
       if (exitCode !== 0) {
         root.applying = false
-        root.applyStatus = "error: helper missing — run: sudo install -D -m 0755 " + root.pluginDir + "/bin/mbpfan-apply " + root.helperPath
+        root.applyStatus = "error: " + (root.applyError || "write config failed")
         statusClearTimer.restart()
         return
       }
       applyError = ""
-      applyProc.command = ["/usr/bin/pkexec", helperPath,
-                           lowField.text.trim(), highField.text.trim(),
-                           maxField.text.trim(), pollField.text.trim()]
-      if (!applyProc.running) applyProc.running = true
+      restartProc.command = ["/usr/bin/pkexec", "/usr/bin/systemctl", "restart", "mbpfan"]
+      if (!restartProc.running) restartProc.running = true
     }
   }
 
   Process {
-    id: applyProc
+    id: restartProc
     command: []
     stderr: StdioCollector {
       waitForEnd: true
@@ -334,7 +348,7 @@ Panel {
         root.loadConfig()
         root.refreshStatus()
       } else {
-        root.applyStatus = "error: " + (root.applyError || "apply failed")
+        root.applyStatus = "error: " + (root.applyError || "restart failed")
       }
       statusClearTimer.restart()
     }
