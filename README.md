@@ -3,7 +3,7 @@
 A [Quickshell](https://quickshell.io) bar-widget for [Omarchy](https://omarchy.org) that watches
 [`mbpfan`](https://github.com/linux-on-mac/mbpfan) on Apple hardware: it shows **CPU temperature**
 and **fan speed** right in the top bar, and opens a small panel where you can view and edit
-mbpfan's fan-control defaults (`low_temp`, `high_temp`, `max_temp`, `polling_interval`).
+mbpfan's temperature thresholds (`low_temp`, `high_temp`, `max_temp`).
 
 Designed to be cheap: it reads the sensors with one tiny shell call every few seconds and only
 polls while the panel is open — the monitoring widget itself does not burn CPU.
@@ -14,24 +14,28 @@ polls while the panel is open — the monitoring widget itself does not burn CPU
 - Hover tooltip with the full temperature + fan readout.
 - Click to open a compact settings panel:
   - Current temperature + fan RPM.
-  - Editable mbpfan defaults: `low_temp`, `high_temp`, `max_temp`, `polling_interval`.
+  - Editable mbpfan temperature thresholds: `low_temp`, `high_temp`, `max_temp`.
+  - Keeps `polling_interval` at the upstream one-second default so mbpfan remains responsive.
   - **Apply** validates the values, then edits `/etc/mbpfan.conf` and restarts `mbpfan` through
     `pkexec` on **fixed trusted system binaries only** (`sed`, `systemctl`) — nothing is installed
     system-wide, and no plugin code or file is ever executed/read as root.
-  - **Reset** re-reads the live config back into the fields.
-  - Fields validate on focus loss — non-numeric input reverts to the configured value.
+  - **Discard** restores the last successfully loaded values without writing anything.
+  - The info icon explains all four settings. The defaults icon stages mbpfan's upstream defaults
+    (`63 / 66 / 86 · 1s`) after confirmation; **Apply** is still required to save them.
+  - Apply stays disabled until the config is loaded, the draft has changed, and every value is valid.
+  - Opening the panel does not focus an editor; typing changes nothing until you select a field.
 - Follows the Omarchy bar-widget contract; opens anchored next to its own bar slot (right side).
 
 ## Requirements
 
-This widget targets **Apple hardware that `mbpfan` supports and that exposes the `applesmc`
-**sensor driver** — that is, any Apple machine with fans and the ApplesMC controller, such as
-MacBook, MacBook Pro, MacBook Air, iMac, or Mac mini running Linux. If your machine can run
-`mbpfan`, it can use this widget.
+This release is tested on a **15-inch Retina MacBook Pro (Late 2013)**. It targets Intel Apple
+hardware that runs `mbpfan` through the `applesmc` and `coretemp` drivers, but its monitoring path
+currently expects the two-fan ApplesMC layout described below. Other Mac models may expose a
+different fan count or thermal-zone number and can require a small read-script adjustment.
 
 This widget is only useful if `mbpfan` is installed, configured, and actually reading your
-machine's sensors. The bar widget reads the same `applesmc` files `mbpfan` uses, so if `mbpfan`
-doesn't see a temperature or fan speed, neither will this widget.
+machine's sensors. Before installing, confirm that the exact paths in the verification steps below
+exist on your machine.
 
 ### 1. Install mbpfan
 
@@ -61,10 +65,11 @@ polling_interval = 1
   `applesmc` driver. You may omit them to let mbpfan auto-detect from the driver.
 
 Adjust the thresholds to your own machine's thermal profile; the values above are typical but
-not universal. The widget's **Apply** accepts only `low_temp ≥ 20` with `low < high < max`,
-`max_temp ≤ 90`, and `polling_interval` 1–60 — aligned with upstream mbpfan's guidance
-(`max_temp` must not exceed 90, otherwise the daemon can stay at minimum fan speed at normal
-temperatures). Values outside those ranges are rejected without touching the config.
+not universal. The widget's **Apply** accepts only `20 ≤ low_temp ≤ 63`,
+`low_temp < high_temp ≤ 66`, and `high_temp < max_temp ≤ 90`. It also writes
+`polling_interval = 1`, the current upstream default. These conservative limits prevent accepted
+settings from leaving the fans at minimum until an excessive temperature or delaying sensor
+response. Values outside those ranges are rejected without touching the config.
 
 ### 3. Enable and start the service
 
@@ -141,9 +146,11 @@ shell` is needed; restart the shell only if the widget misbehaves after an updat
 
 - **Left-click** the thermometer in the bar → opens the settings panel.
 - **Right-click** → force a refresh.
-- In the panel, edit the values and press **Apply** (a graphical `pkexec` prompt appears to update
-  `/etc/mbpfan.conf`, then another to restart `mbpfan`; only fixed trusted binaries are elevated).
-  **Reset** discards un-applied edits.
+- In the panel, edit the temperature thresholds and press **Apply**. Administrator authorization
+  may be requested for the config update and service restart; only fixed trusted binaries are
+  elevated. **Discard** restores the last loaded values. Closing the panel also saves nothing;
+  changes are not written until you select **Apply**. Hover the info icon for a compact explanation
+  of all settings, or use the defaults icon to stage mbpfan's upstream defaults after confirmation.
 
 ## How the values are read
 
@@ -157,18 +164,20 @@ It prints a single line `TEMP FAN1 FAN2` every refresh. Nothing is written by th
 ## How the settings are applied
 
 Applying needs no helper and installs nothing: both privileged steps use only fixed trusted
-system binaries, and the only user-controlled input is the four digits-only values.
+system binaries, and the only user-controlled input is the three digits-only temperature values.
 
-1. The panel validates the four values strictly (digits only, `20 ≤ low < high < max ≤ 90`,
-   `poll` 1–60), matching upstream mbpfan's guidance that `max_temp` must not exceed 90.
+1. The panel first requires all four settings to be present in the loaded config. It then validates
+   the temperature values strictly (digits only, `20 ≤ low ≤ 63`, `low < high ≤ 66`,
+   `high < max ≤ 90`), canonicalizes them to short decimal strings, and fixes polling at the
+   upstream one-second default.
 2. The panel invokes `pkexec /usr/bin/sed -i … /etc/mbpfan.conf`, where each expression is built from a
-   fixed key name (`low_temp`, `high_temp`, `max_temp`, `polling_interval`) and the validated digit
-   value — no user-controlled path, file, or code is in the expressions.
+   fixed key name (`low_temp`, `high_temp`, `max_temp`, `polling_interval`) and either a validated
+   digit value or the fixed value `1` — no user-controlled path, file, or code is in the expressions.
 3. The panel invokes `pkexec /usr/bin/systemctl restart mbpfan` to reload the service.
 
 No plugin code is ever executed as root, no user-writable file or path is ever opened by root, and
 there is nothing to install — so there is no script-elevation, file/symlink TOCTOU, or install-source
-race surface at all. (Apply shows two `pkexec` prompts: the config write and the service restart.)
+race surface at all. Polkit may request authorization for the config write and service restart.
 
 ## Uninstall / disable
 
